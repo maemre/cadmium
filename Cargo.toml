@@ -1,0 +1,8 @@
+[package]
+name = "cadmium"
+version = "0.1.0"
+authors = ["Mehmet Emre <emre@cs.ucsb.edu>"]
+edition = "2018"
+
+[dependencies]
+nom = "4.1.1"
