@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use crate::ast_common::*;
 
 // Representation for logic variables, subject to change
-type LV = i64;
+pub type LV = i64;
 
 // Checkpoint labels are just enumerated ints.
-type Label = i64;
+pub type Label = i64;
 
 // Instructions that the VM executes
 pub enum Insn {
@@ -29,6 +29,7 @@ pub enum Insn {
     Halt
 }
 
+#[derive(Debug,Clone)]
 pub enum Value {
     Atom(Atom),
     LV(LV),

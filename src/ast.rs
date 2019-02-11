@@ -33,6 +33,40 @@ pub enum Stmt<V> {
     TrueS // For convenience
 }
 
+impl<V: Clone> Stmt<V> {
+
+    // The current implementation clones the variables
+    // TODO: an efficient iterator implementation that
+    // traverses the data structure lazily.
+    fn collect_pvs(&self) -> Vec<V> {
+        use Stmt::*;
+        match self {
+            And(s1, s2) => {
+                let mut lhs = s1.collect_pvs();
+                lhs.append(&mut s2.collect_pvs());
+                lhs
+            }
+            Or(s1, s2) => {
+                let mut lhs = s1.collect_pvs();
+                lhs.append(&mut s2.collect_pvs());
+                lhs
+            }
+            If(s1, s2) => {
+                let mut lhs = s1.collect_pvs();
+                lhs.append(&mut s2.collect_pvs());
+                lhs
+            }
+            Unify(e1, e2) => {
+                let mut lhs = e1.collect_pvs();
+                lhs.append(&mut e2.collect_pvs());
+                lhs
+            }
+            Call(_, es) => es.iter().flat_map(|e| e.collect_pvs()).collect(),
+            _ => Vec::new()
+        }
+    }
+}
+
 impl<V> fmt::Display for Stmt<V> where V: fmt::Display {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Stmt::*;
@@ -66,6 +100,20 @@ pub enum Expr<V> {
     Ctor(Atom, Vec<Expr<V>>)
 }
 
+impl<V: Clone> Expr<V> {
+
+    // The current implementation clones the variables
+    // TODO: an efficient iterator implementation that
+    // traverses the data structure lazily.
+    fn collect_pvs(&self) -> Vec<V> {
+        use Expr::*;
+        match self {
+            PV(x) => vec![x.clone()],
+            Ctor(_, es) => es.iter().flat_map(|e| e.collect_pvs()).collect(),
+            _ => Vec::new()
+        }
+    }
+}
 
 impl<V> fmt::Display for Expr<V> where V: fmt::Display {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
