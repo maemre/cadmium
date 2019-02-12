@@ -1,93 +1,57 @@
 use std::mem;
 use std::ops;
 use std::fmt;
+use std::rc::Rc;
+use std::cell::RefCell;
+use std::clone::Clone;
+use im_rc::HashMap;
+use std::hash::Hash;
+use std::cmp::Eq;
+use crate::ir::*;
 
-// Imports from local data structures
-use LinkedArray::*;
+// Persistent version of Tarjan's union-find data structure. It is based on "A persistent union-find data structure" by Conchon et al.
 
-// Unification data structure with persistance and compression. It is based on "A persistent union-find data structure" by Conchon et al.
-
-// Persistent arrays represented as either
-//  - an ordinary array
-//  - a delta to a linked persistent array
-enum LinkedArray<T> {
-    Arr(Vec<T>),
-    Diff(usize, T, Box<LinkedArray<T>>) // Use Rc?
+#[derive(Clone)]
+pub struct Unification where {
+    parent: HashMap<Value, Value>
 }
 
-impl<T> LinkedArray<T> {
-    // consume given vector and convert it into a persistent array
-    fn new(v: Vec<T>) -> LinkedArray<T> {
-        LinkedArray::Arr(v)
-    }
-
-    // return a new persistent array based on this one. The trick
-    // here is to make the newest version of the array efficient while
-    // accumulating changes in older versions which will be discarded
-    // in case of not backtracking.
-    // `self` is `&mut` because we are modifying it to have the difference.
-    fn update(&mut self, i: usize, x: T) -> Self {
-        let y = match self {
-            Arr(v) => mem::replace(&mut v[i], x),
-            Diff(_, _, _) => {
-                // this is already a diff history, just append
-                return Diff(i, x, Box::new(*self))
-            }
-        };
-
-        mem::replace(self, Diff(i, y, Box::new(*self)))
-    }
-    
-    // Baker's optimization from "Shallow binding makes functional arrays fast".
-    // This function changes the direction of linking to make this version of the array base.
-    fn reroot(&mut self) {
-        if let Diff(i, x, a) = self {
-            a.reroot(); // re-root the base of this array
-            // the following will not fail because of contract of reroot
-            if let Arr(v) = *a {
-                let y = mem::replace(&mut v[i], x);
-                mem::swap(self, Arr(v));
-                *a = Diff(i, y, Box::new(self))
-            }
-        }
-    }
-}
-
-impl<T> ops::Index<usize> for LinkedArray<T> {
-    type Output = T;
-
-    fn index(&self, i: usize) -> &T {
-        match self {
-            Arr(v) => &v[i],
-            Diff(j, x, a) => {
-                if i == *j {
-                    &x
-                } else {
-                    &a[i]
-                }
-            }
-        }
-    }
-}
-
-// TODO: add dynamic resizing
-pub struct Unification<V> {
-    rank: LinkedArray<V>,
-    parent: LinkedArray<V>
-}
-
-impl<V> Unification<V> {
-    fn new() -> Self {
+// TODO: implement path compression
+impl Unification {
+    pub fn new() -> Self {
         Unification {
-            rank: LinkedArray::new(vec![]),
-            parent: LinkedArray::new(vec![])
+            parent: HashMap::new()
         }
     }
 
-    fn union() {} // TODO: implement
+    pub fn find<'a, 'b: 'a, 'c: 'a>(&'b self, x: &'c Value) -> &'a Value {
+        match self.parent.get(x) {
+            Some(y@Value::LV(_)) if x != y => self.find(y),
+            _ => x
+        }
+    }
+
+    // Unify given values, this clones the values into the union-find if they are not present.
+    pub fn union(&self, x: &Value, y: &Value) -> Option<Self> {
+        match (self.find(x), self.find(y)) {
+            (x, y) if x == y => Some(self.clone()),
+            (x@Value::LV(_), y) => {
+                Some(Unification {
+                    parent: self.parent.update(x.clone(), y.clone()).update(y.clone(), y.clone()),
+                })
+            }
+            (x, y@Value::LV(_)) => self.union(x, y),
+            (Value::Ctor(f, fArgs), Value::Ctor(g, gArgs)) if f == g && fArgs.len() == gArgs.len() => {
+                (1..fArgs.len()).fold(Some(self.clone()), { |ufOption, i|
+                    ufOption.and_then(|uf| uf.union(&fArgs[i], &gArgs[i]))
+                })
+            }
+            _ => None // unification failure
+        }
+    }
 }
 
-impl<V: fmt::Debug> fmt::Debug for Unification<V> {
+impl fmt::Debug for Unification {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         panic!("not implemented yet") // TODO: implement
     }

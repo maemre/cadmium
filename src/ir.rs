@@ -29,7 +29,7 @@ pub enum Insn {
     Halt
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,Hash,PartialEq,Eq)]
 pub enum Value {
     Atom(Atom),
     LV(LV),

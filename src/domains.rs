@@ -19,7 +19,7 @@ pub type CallStack = Vec<(LocalState, usize)>;
 pub struct Checkpoint {
     label: (u32, Label), // label of the checkpoint, used for unrolling (Drop instruction)
     localState: LocalState,
-    bindings: Unification<Value>, // the heap graph, as a Union-Find data structure
+    bindings: Unification, // the heap graph, as a Union-Find data structure
     pc: usize,
     callStack: CallStack
 }

@@ -1,5 +1,5 @@
-#[macro_use]
 extern crate nom;
+extern crate im_rc;
 
 pub mod ast_common;
 pub mod ast;
