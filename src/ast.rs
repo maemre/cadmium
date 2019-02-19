@@ -133,7 +133,7 @@ impl<V> fmt::Display for Stmt<V> where V: fmt::Display {
     }
 }
 
-#[derive(Clone,PartialEq,Eq)]
+#[derive(Clone,PartialEq,Eq,Debug)]
 pub enum Expr<V> {
     Atom(Atom),
     PV(V),

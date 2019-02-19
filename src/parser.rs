@@ -5,7 +5,7 @@ use crate::ast_common::*;
 use crate::ast::*;
 
 named!(
-    var_or_atom<&str, &str>,
+    alnum_or_underscore<&str, &str>,
     take_while1!(|c: char| {
         c.is_alphanumeric() || c == '_'
     })
@@ -13,7 +13,7 @@ named!(
 
 named!(
     pub var<&str, String>,
-    map_opt!(var_or_atom, |s: &str| {
+    map_opt!(alnum_or_underscore, |s: &str| {
         if s.chars().next().unwrap().is_uppercase() {
             Some(s.to_string())
         } else if s.starts_with("_") && !s.starts_with("__") {
@@ -24,15 +24,49 @@ named!(
     })
 );
 
+fn unescape_atom(s: &str) -> Option<String> {
+    let mut iter = s.chars();
+    let mut buffer = String::with_capacity(s.len());
+
+    while let Some(c) = iter.next() {
+        if c == '\\' {
+            if let Some(escaped) = iter.next() {
+                let c = match escaped {
+                    '\\' => '\\',
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '\'' => '\'',
+                    _ => return None // no known escape sequence, fail
+                };
+
+                buffer.push(c);
+            } else {
+                // There is a dangling backslash at the end, fail
+                return None;
+            }
+        } else {
+            buffer.push(c);
+        }
+    }
+
+    Some(buffer)
+}
+
+// A quoted atom is of the form 'contents' where contents is an escaped string.
+named!(quoted_atom<&str, String>,
+    map_opt!(delimited!(tag!("'"), escaped!(none_of!("'\\"), '\\', one_of!("n'\\")), tag!("'")), unescape_atom)
+);
+
 named!(
     pub atom<&str, String>,
-    map_opt!(var_or_atom, |s: &str| {
+    alt!(quoted_atom | map_opt!(alnum_or_underscore, |s: &str| {
         if s.chars().next().unwrap().is_lowercase() {
             Some(s.to_string())
         } else {
             None
         }
-    })
+    }))
 );
 
 named!(unum<&str, usize>, map_res!(digit1::<&str>, |s| {
@@ -52,15 +86,22 @@ named!(
             tag!("/") >>
             arity: unum >>
             (Pred::Sys(p, arity)))
-      | map!(atom, |a| Pred::User(a))
+      | map_opt!(atom, |a| {
+            if &a != "sys" {
+                Some(Pred::User(a))
+            } else {
+                None
+            }
+        })
     )
 );
 
+// TODO: fix whitespace issues
 named!(
     ctor<&str, Expr<String>>,
     do_parse!(
         p: atom >>
-        args: delimited!(tag!("("), many0!(expr), tag!(")")) >>
+        args: delimited!(tag!("("), separated_list_complete!(tag!(","), expr), tag!(")")) >>
         (Expr::Ctor(p, args))
     )
 );
@@ -69,7 +110,9 @@ named!(
     pub expr<&str, Expr<String>>,
     alt!(
         map!(var, |v| { Expr::PV::<String>(v) })
-      | ctor | map!(atom, |a| { Expr::Atom(a.to_string()) } )
+      | ctor
+      // when choosing an atom, make sure that it's not followed by an '('
+      | terminated!(map!(atom, |a| { Expr::Atom(a.to_string()) } ), peek!(none_of!("(")))
       | map!(num, Expr::Num)
       | delimited!(tag!("("), expr, tag!(")"))
     )
@@ -148,13 +191,34 @@ mod tests {
     use Expr::*;
     use Stmt::*;
 
+    // Fixtures
+
+    static VALID_ATOMS: [(&str, &str); 7] = [
+        ("a ", "a"),
+        ("ab__C_dAA ", "ab__C_dAA"),
+        ("'\\''", "'"),
+        ("'\n'", "\n"),
+        ("'\\n'", "\n"),
+        ("';'", ";"),
+        ("':-'", ":-"),
+    ];
+
+    static VALID_VARS: [&str; 6] = ["A", "AbCdAA", "Ab__C_dAA", "_", "_X", "X"];
+
+    // Tests
+
     #[test]
     fn test_var() {
-        assert_eq!(var("A "), Ok((" ", "A".to_string())));
-        assert_eq!(var("AbCdAA "), Ok((" ", "AbCdAA".to_string())));
+
+        for x in VALID_VARS.iter() {
+            let mut input = x.to_string();
+            input.push(' ');
+            
+            assert_eq!(var(&input), Ok((" ", x.to_string())));
+        }
+
         assert_eq!(var("A b"), Ok((" b", "A".to_string())));
-        assert_eq!(var("_ "), Ok((" ", "_".to_string())));
-        assert_eq!(var("_X "), Ok((" ", "_X".to_string())));
+
         if let Err(nom::Err::Error(_)) = var("__ ") {
         } else {
             assert!(false, "variables starting with two underscores should be rejected")
@@ -166,6 +230,12 @@ mod tests {
         assert_eq!(atom("a "), Ok((" ", "a".to_string())));
         assert_eq!(atom("ab__C_dAA "), Ok((" ", "ab__C_dAA".to_string())));
         assert_eq!(atom("a b"), Ok((" b", "a".to_string())));
+        assert_eq!(atom("'\\''"), Ok(("", "'".to_string())));
+        assert_eq!(atom("':-'"), Ok(("", ":-".to_string())));
+        assert_eq!(atom("'\n'"), Ok(("", "\n".to_string())));
+        assert_eq!(atom("'\\n'"), Ok(("", "\n".to_string())));
+        assert_eq!(atom("';'"), Ok(("", ";".to_string())));
+
         if let Err(nom::Err::Error(_)) = atom("_ ") {
         } else {
             assert!(false, "variables starting with two underscores should be rejected")
@@ -179,7 +249,58 @@ mod tests {
 
         if let Err(nom::Err::Error(_)) = pred("sys:foo/-1 ") {
         } else {
-            assert!(false, "system predicates with negative arity should be rejected")
+            assert!(false, format!("system predicates with negative arity should be rejected, but got {:?}", pred("sys:foo/-1")))
+        }
+    }
+
+    #[test]
+    fn test_expr_atomic() {
+        for (input, atom) in VALID_ATOMS.iter() {
+            let remainder = if input.ends_with(" ") {
+                "  "
+            } else {
+                " "
+            };
+
+            let mut input_owned = input.to_string();
+            input_owned.push(' '); // put a delimiter whitespace at the end to finish parsing
+
+            assert_eq!(expr(&input_owned), Ok((remainder, Expr::Atom(atom.to_string()))));
+        }
+
+        for x in VALID_VARS.iter() {
+            let mut input = x.to_string();
+            input.push(' '); // put a delimiter whitespace at the end
+
+            assert_eq!(expr(&input), Ok((" ", Expr::PV(x.to_string()))));
+        }
+
+        // TODO: test numbers
+    }
+
+    #[test]
+    fn test_expr_functor() {
+        use Expr::*;
+
+        let valid_functors = vec![
+            ("foo()".to_string(),
+             Ctor::<String>("foo".to_string(), vec![])),
+            ("foo(bar)".to_string(),
+             Ctor::<String>("foo".to_string(), vec![Atom("bar".to_string())])),
+            ("foo(Baz)".to_string(),
+             Ctor::<String>("foo".to_string(), vec![PV("Baz".to_string())])),
+            ("foo(_)".to_string(),
+             Ctor::<String>("foo".to_string(), vec![PV("_".to_string())])),
+            ("foo(bar,Baz)".to_string(),
+             Ctor::<String>("foo".to_string(), vec![Atom("bar".to_string()), PV("Baz".to_string())])),
+            ("foo(bar, Baz)".to_string(),
+             Ctor::<String>("foo".to_string(), vec![Atom("bar".to_string()), PV("Baz".to_string())]))
+        ];
+
+        for (mut input, functor) in valid_functors.into_iter() {
+            input.push(' ');
+            assert_eq!(ctor(&input),  Ok((" ", functor.clone())));
+            assert_eq!(expr(&input),  Ok((" ", functor)));
         }
     }
 }
