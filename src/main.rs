@@ -13,6 +13,5 @@ pub mod builtins;
 use ast::*;
 
 fn main() {
-    parser::var("foo");
     println!("{}", Expr::Atom::<i64>("foo".to_string()));
 }
