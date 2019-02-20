@@ -146,6 +146,7 @@ named!(
             s2: conjunct >>
             (Stmt::And(Box::new(s1), Box::new(s2)))
         )
+      | conjunct
     )
 );
 
@@ -160,7 +161,14 @@ named!(
             s3: disjunct >>
             (Stmt::If(Box::new(s1), Box::new(s2), Box::new(s3)))
         )
+      | disjunct
     )
+);
+
+// A top-level statement for the repl, which is a statement terminated with a "."
+named!(
+    pub top_level<CompleteStr, Vec<Stmt<String>>>,
+    many1!(terminated!(stmt, tag!(".")))
 );
 
 named!(

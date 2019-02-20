@@ -11,7 +11,7 @@ use std::mem;
 // The state of the IR-generating compiler. This structure carries information about the scope, the generated variable counter, etc.
 pub struct IRGen {
     // program text of the generated IR so far
-    ir_code: HashMap<Atom, Vec<Insn>>,
+    ir_code: HashMap<PredSig, Vec<Insn>>,
     // counter for generated labels
     label_counter: Label,
     current_ir_code: Vec<Insn>,
@@ -29,19 +29,26 @@ impl IRGen {
     }
 
     pub fn compile_pred(&mut self, pred_def: PredDef<usize>) {
-        // we want each predicate to have only one definition by this point. Also, we don't allow re-definitions of system predicates. TODO: make these static checks
+        let sig = pred_def.sig();
+        
         match pred_def.name {
             p@Pred::Sys(_, _) => panic!(format!("Trying to define the system predicate {} in user code!", p)),
             Pred::User(name) => {
-                assert!(!self.ir_code.contains_key(&name), format!("Trying to redefine the predicate {} in user code!", name));
+                // we want each predicate to have only one definition by this point. Also, we don't allow re-definitions of system predicates. TODO: make these static checks
+                assert!(!self.ir_code.contains_key(&sig), format!("Trying to redefine the predicate {} in user code!", name));
                 // assert that we are not in the middle of compiling another predicate
                 assert!(self.current_ir_code.is_empty(), "trying to compile a predicate while being in the middle of compiling another one");
+                let arity = pred_def.params.len();
                 // generate the IR that will unify the parameters with the arguments on stack
                 self.compile_params(pred_def.params);
                 // compile given statement
                 self.compile_stmt(pred_def.body);
+                // insert a halt instruction if we are working on main
+                if name == "main" && arity  == 0 {
+                    self.current_ir_code.push(Insn::Halt);
+                }
                 // move the current body we were working on to the program text
-                self.ir_code.insert(name, mem::replace(&mut self.current_ir_code, Vec::new()));
+                self.ir_code.insert(sig, mem::replace(&mut self.current_ir_code, Vec::new()));
             }
         }
     }
@@ -120,12 +127,13 @@ impl IRGen {
                 self.current_ir_code.push(Insn::Unify);
             }
             Call(p, args) => {
+                let arity = args.len();
                 // push the arguments, right-to-left
                 for expr in args.into_iter().rev() {
                     self.compile_expr(expr);
                 }
                 // call the predicate
-                self.current_ir_code.push(Insn::Call(p));
+                self.current_ir_code.push(Insn::Call(PredSig(p, arity)));
             }
             Fail => self.current_ir_code.push(Insn::Fail),
             True => {}
@@ -133,13 +141,18 @@ impl IRGen {
     }
 
     // allow the user to inspect the generated code
-    pub fn get_ir_ref(&self) -> &HashMap<String, Vec<Insn>> {
+    pub fn get_ir_ref(&self) -> &HashMap<PredSig, Vec<Insn>> {
         &self.ir_code
     }
 
     // extract the generated IR program and consume Self.
-    pub fn get_ir_program(self) -> ir::Program {
+    pub fn get_ir_program(mut self) -> ir::Program {
         assert!(self.current_ir_code.is_empty(), "Tried to extract the program in middle of compiling a predicate");
+        // Add halt at the end of main
+        if let Some(main) = self.ir_code.get_mut(&PredSig(Pred::User("main".to_string()), 0)) {
+            main.push(Insn::Halt);
+        }
+
         ir::Program { text: self.ir_code }
     }
 }

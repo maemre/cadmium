@@ -1,5 +1,6 @@
 // The overall structure of the AST transformers
 
+use crate::ast_common::PredSig;
 use std::collections::HashMap;
 use std::iter::FromIterator;
 use std::marker::PhantomData;
@@ -187,5 +188,70 @@ impl<V: PartialEq> InplaceTransformer<V> for IdempotentElim<V> {
         for pred_def in input.iter_mut() {
             self.transform_stmt(&mut pred_def.body);
         }
+    }
+}
+
+// Convert variables to numbers for more efficient comparison
+pub struct EnumerateVariables {
+    enums: HashMap<PredSig, HashMap<String, usize>>,
+}
+
+impl EnumerateVariables {
+    pub fn new() -> Self {
+        EnumerateVariables { enums: HashMap::new() }
+    }
+
+    fn transform_pred(&mut self, pred: PredDef<String>) -> PredDef<usize> {
+        let sig = pred.sig().clone();
+        self.enums.insert(sig.clone(), HashMap::new());
+
+        PredDef {
+            name: pred.name,
+            params: pred.params.into_iter().map(|e| self.transform_expr(&sig, e)).collect(),
+            body: self.transform_stmt(&sig, pred.body)
+        }
+    }
+
+    fn transform_expr(&mut self, sig: &PredSig, e: Expr<String>) -> Expr<usize> {
+        use Expr::*;
+
+        match e {
+            PV(x) => {
+                if ! self.enums[sig].contains_key(&x) {
+                    // we see this variable for the first time, assign it a fresh variable number, computed from the size of the enumeration table
+                    let var_number = self.enums[sig].len();
+                    self.enums.get_mut(sig).unwrap().insert(x.clone(), var_number);
+                }
+                PV(self.enums[sig][&x])
+            }
+            Ctor(p, args) => {
+                Ctor(p, args.into_iter().map(|e| self.transform_expr(sig, e)).collect())
+            }
+            Atom(a) => Atom(a),
+            Num(n) => Num(n)
+        }
+    }
+
+    fn transform_stmt(&mut self, sig: &PredSig, s: Stmt<String>) -> Stmt<usize> {
+        use Stmt::*;
+
+        match s {
+            And(s1, s2) => And(Box::new(self.transform_stmt(sig, *s1)), Box::new(self.transform_stmt(sig, *s2))),
+            Or(s1, s2) => Or(Box::new(self.transform_stmt(sig, *s1)), Box::new(self.transform_stmt(sig, *s2))),
+            If(s1, s2, s3) => If(
+                Box::new(self.transform_stmt(sig, *s1)),
+                Box::new(self.transform_stmt(sig, *s2)),
+                Box::new(self.transform_stmt(sig, *s3))),
+            Call(p, args) => Call(p, args.into_iter().map(|e| self.transform_expr(sig, e)).collect()),
+            Unify(e1, e2) => Unify(self.transform_expr(sig, e1), self.transform_expr(sig, e2)),
+            Fail => Fail,
+            True => True
+        }
+    }
+}
+
+impl Transformer<String, usize> for EnumerateVariables {
+    fn transform(mut self, input: Program<String>) -> Program<usize> {
+        input.into_iter().map(|p| self.transform_pred(p)).collect()
     }
 }

@@ -1,4 +1,5 @@
 // Concrete domains for the VM
+use crate::ast_common::*;
 use crate::ir::*;
 use crate::unification::*;
 use im_rc::HashMap;
@@ -11,12 +12,12 @@ pub struct LocalState {
     // TODO: use a HashTrieMap for persistence, or even better just a Vec
     pub locals: HashMap<usize, Value>, // the environment
     pub op_stack: Vec<Value>, // the operand stack, get rid of this?
-    pub predicate: String,
+    pub predicate: PredSig,
     pub frame_depth: u32, // depth of this call stack frame, this is incremented on each call hence assigns a unique ID to each call. These are used for constructing checkpoint labels(?)
 }
 
 impl LocalState {
-    pub fn new(predicate: String, frame_depth: u32) -> Self {
+    pub fn new(predicate: PredSig, frame_depth: u32) -> Self {
         LocalState {
             locals: HashMap::new(),
             op_stack: vec![],
@@ -80,7 +81,7 @@ pub struct State {
 impl State {
     pub fn new() -> Self {
         State {
-            local_state: LocalState::new("main/0".to_string(), 0),
+            local_state: LocalState::new(PredSig(Pred::User("main".to_string()), 0), 0),
             bindings: Unification::new(),
             cp_stack: vec![],
             pc: 0,
@@ -134,11 +135,11 @@ impl State {
         self
     }
 
-    // Make a predicate call, saves the local state and enters the predicate's body
-    pub fn call(&mut self, pred: &str) {
+    // Make a user predicate call, saves the local state and enters the predicate's body
+    pub fn call_user(&mut self, pred: &str, argc: usize) {
         // load the new local state and extract the current one
         let new_frame_depth = self.local_state.frame_depth + 1;
-        let last_frame = std::mem::replace(&mut self.local_state, LocalState::new(String::from(pred), new_frame_depth));
+        let last_frame = std::mem::replace(&mut self.local_state, LocalState::new(PredSig(Pred::User(pred.to_string()), argc), new_frame_depth));
         // save the return address
         self.call_stack.push((last_frame, self.pc));
         // move the PC to the beginning

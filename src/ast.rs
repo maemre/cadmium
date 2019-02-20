@@ -19,13 +19,28 @@ pub type Program<V> = Vec<PredDef<V>>;
 
 // Predicate definition. `name` should always be a user predicate. TODO: Enforce
 // this.
+#[derive(PartialEq,Eq,Hash)]
 pub struct PredDef<V> {
     pub name: Pred,
     pub params: Vec<Expr<V>>,
     pub body: Stmt<V>
 }
 
-#[derive(PartialEq,Eq)]
+impl<V> PredDef<V> {
+    pub fn new(name: &str, params: Vec<Expr<V>>, body: Stmt<V>) -> Self {
+        PredDef {
+            name: Pred::User(name.to_string()),
+            params: params,
+            body: body,
+        }
+    }
+
+    pub fn sig(&self) -> PredSig {
+        PredSig(self.name.clone(), self.params.len())
+    }
+}
+
+#[derive(PartialEq,Eq,Hash,Debug)]
 pub enum Stmt<V> {
     And(Box<Stmt<V>>, Box<Stmt<V>>),
     Or(Box<Stmt<V>>, Box<Stmt<V>>),
@@ -133,7 +148,7 @@ impl<V> fmt::Display for Stmt<V> where V: fmt::Display {
     }
 }
 
-#[derive(Clone,PartialEq,Eq,Debug)]
+#[derive(Clone,PartialEq,Eq,Debug,Hash)]
 pub enum Expr<V> {
     Atom(Atom),
     PV(V),

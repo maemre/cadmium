@@ -1,3 +1,4 @@
+use crate::ast_common::PredSig;
 use crate::ir::*;
 use crate::domains::*;
 use crate::ast_common::Pred;
@@ -28,11 +29,6 @@ impl VM {
         Self::singleton(s)
     }
 
-    // resolve system predicates
-    fn resolve_sys_pred(s: State, pred: &str) -> Option<State> {
-        panic!("The system calls are not yet implemented")
-    }
-
     // process this state, potentially producing multiple states
     fn next(&self, mut s: State) -> Option<State> {
         use Insn::*;
@@ -59,12 +55,12 @@ impl VM {
                 s.pc = (*offset as usize).wrapping_add(s.pc); // addition in 2's complement with no penalty
                 Self::singleton(s)
             },
-            Call(Pred::User(pred)) => {
+            Call(PredSig(Pred::User(pred), arity)) => {
                 // TODO: error checking when loading the predicate
-                s.call(pred);
+                s.call_user(pred, *arity);
                 Self::singleton(s)
             },
-            Call(Pred::Sys(pred, arity)) => {
+            Call(PredSig(Pred::Sys(pred, arity), _)) => {
                 if self.builtins.exists(pred, arity) {
                     let args = s.local_state.pop_n(*arity);
                     if self.builtins[&(pred.clone(), *arity)](args, &mut s) {

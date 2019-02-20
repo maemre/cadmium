@@ -22,7 +22,7 @@ pub enum Insn {
     Unify, // unify the top 2 values on the stack then remove them
     MkCheckpoint(Label, isize),
     Jump(isize),
-    Call(Pred),
+    Call(PredSig),
     Det(Label),
     DetUntil(Label),
     Fail,
@@ -71,5 +71,5 @@ impl fmt::Display for Value {
 }
 
 pub struct Program {
-    pub text: HashMap<String, Vec<Insn>>, // code of each user predicate
+    pub text: HashMap<PredSig, Vec<Insn>>, // code of each user predicate
 }
