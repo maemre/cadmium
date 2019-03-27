@@ -6,7 +6,6 @@ use crate::ast;
 use crate::ir;
 use crate::ast_common::*;
 use std::collections::{HashMap, HashSet};
-use std::mem;
 
 // The state of the IR-generating compiler. This structure carries information about the scope, the generated variable counter, etc.
 pub struct IRGen {

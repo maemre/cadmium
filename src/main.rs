@@ -20,10 +20,7 @@ use std::collections::HashMap;
 use ast::*;
 use ast::transform::*;
 use vm::VM;
-use domains::*;
 use ir_gen::IRGen;
-use ir::Program;
-use ir::Value;
 
 // Compile given top-level statement to IR
 fn compile_stmt(s: Stmt<String>) -> ir::Program {

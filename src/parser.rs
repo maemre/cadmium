@@ -198,7 +198,6 @@ named!(
 mod tests {
     use super::*;
     use Expr::*;
-    use Stmt::*;
 
     // Fixtures
 
