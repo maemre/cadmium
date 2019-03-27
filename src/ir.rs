@@ -10,7 +10,7 @@ pub type LV = i64;
 pub type Label = i64;
 
 // Instructions that the VM executes
-#[derive(PartialEq,Eq)]
+#[derive(PartialEq,Eq,Debug)]
 pub enum Insn {
     PushValue(Value), // push given value
     Pop,

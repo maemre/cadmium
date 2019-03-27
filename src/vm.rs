@@ -35,7 +35,7 @@ impl VM {
 
         // advance the PC, we may do it on only the non-jump cases later on as an optimization perhaps but loading the checkpoint will dominate this probably anyway
         s.pc += 1;
-        match &self.program.text[&s.local_state.predicate][s.pc] {
+        match &self.program.text[&s.local_state.predicate][s.pc - 1] {
             PushValue(v) => Self::modify_then_pack(s, |s| s.local_state.push_value(v.clone())),
             Pop => Self::modify_then_pack(s, |s: &mut State| {s.local_state.op_stack.pop();}),
             Dup => Self::modify_then_pack(s, |s| s.local_state.dup()),
@@ -83,7 +83,12 @@ impl VM {
     // make a small step
     pub fn step(&mut self) {
         if let Some(state) = self.state.take() {
+            println!("state before: {:?}", state.local_state);
+            println!("processing {:?}", self.program.text[&state.local_state.predicate][state.pc]);
+
             self.state = self.next(state);
+
+            println!("state after: {:?}", self.state.as_ref().map(|s| &s.local_state));
         }
     }
 

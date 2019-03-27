@@ -139,15 +139,9 @@ named!(conjunct<CompleteStr, Stmt<String>>,
 
 named!(
     disjunct<CompleteStr, Stmt<String>>,
-    alt!(
-        do_parse!(
-            s1: conjunct >>
-            ws!(tag!(",")) >>
-            s2: conjunct >>
-            (Stmt::And(Box::new(s1), Box::new(s2)))
-        )
-      | conjunct
-    )
+    map!(separated_nonempty_list!(tag!(","), conjunct), |conjuncts: Vec<Stmt<String>>| {
+        conjuncts.into_iter().fold(Stmt::True, |a, b| Stmt::And(Box::new(a), Box::new(b)))
+    })
 );
 
 named!(
@@ -160,6 +154,12 @@ named!(
             ws!(tag!(";")) >>
             s3: disjunct >>
             (Stmt::If(Box::new(s1), Box::new(s2), Box::new(s3)))
+        )
+      | do_parse!(
+            s1: disjunct >>
+            ws!(tag!(";")) >>
+            s2: disjunct >>
+            (Stmt::Or(Box::new(s1), Box::new(s2)))
         )
       | disjunct
     )

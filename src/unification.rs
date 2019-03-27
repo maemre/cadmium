@@ -21,7 +21,8 @@ impl Unification {
     pub fn find<'a, 'b: 'a, 'c: 'a>(&'b self, x: &'c Value) -> &'a Value {
         match self.parent.get(x) {
             Some(y @ Value::LV(_)) if x != y => self.find(y),
-            _ => x,
+            Some(y) => y,
+            None => x,
         }
     }
 
@@ -35,7 +36,7 @@ impl Unification {
                     .update(x.clone(), y.clone())
                     .update(y.clone(), y.clone()),
             }),
-            (x, y @ Value::LV(_)) => self.union(x, y),
+            (x, y @ Value::LV(_)) => self.union(y, x),
             (Value::Ctor(f, f_args), Value::Ctor(g, g_args))
                 if f == g && f_args.len() == g_args.len() =>
             {
@@ -49,7 +50,7 @@ impl Unification {
 }
 
 impl fmt::Debug for Unification {
-    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
-        panic!("not implemented yet") // TODO: implement
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.parent.fmt(f)
     }
 }

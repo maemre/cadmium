@@ -5,7 +5,7 @@ use crate::ast::*;
 use crate::ast;
 use crate::ir;
 use crate::ast_common::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 
 // The state of the IR-generating compiler. This structure carries information about the scope, the generated variable counter, etc.
@@ -47,8 +47,29 @@ impl IRGen {
                 if name == "main" && arity  == 0 {
                     self.current_ir_code.push(Insn::Halt);
                 }
-                // move the current body we were working on to the program text
-                self.ir_code.insert(sig, mem::replace(&mut self.current_ir_code, Vec::new()));
+                // Insert initialization code for all locals
+                // TODO: do this after all optimizations and using a DFA to lower some unifications to Store instructions when one side is free and the other side is ground.
+                
+                let mut used_locals: HashSet<usize> = HashSet::new();
+                for insn in self.current_ir_code.iter() {
+                    if let Insn::Load(n) = insn {
+                        used_locals.insert(*n);
+                    }
+                }
+
+                let mut ir_code = Vec::with_capacity(used_locals.len() * 1 + self.current_ir_code.len());
+
+                // generate the initialization code
+                for n in used_locals.into_iter() {
+                    ir_code.push(Insn::Fresh);
+                    ir_code.push(Insn::Store(n));
+                }
+
+                // move the body we were working on to the initialization code
+                ir_code.append(&mut self.current_ir_code);
+
+                // insert the code for this predicate
+                self.ir_code.insert(sig, ir_code);
             }
         }
     }

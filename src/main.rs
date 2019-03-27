@@ -51,13 +51,16 @@ fn main() {
     let mut vm = VM::new(ir::Program { text: HashMap::new() });
     let mut run_all = |stmts: Vec<Stmt<String>>| {
         for s in stmts.into_iter() {
-            println!("{}", &s);
-            vm = VM::new(compile_stmt(s));
+            println!("running: {:?}", &s);
+            let ir_code = compile_stmt(s);
+            println!("IR code: {:?}", ir_code.text);
+            vm = VM::new(ir_code);
             vm.run();
             if let Some(state) = &vm.state {
                 for (x, v) in state.local_state.locals.iter() {
                     println!("{} = {}", x, state.bindings.find(v));
                 }
+                println!("bindings: {:?}", state.bindings);
             }
         }
     };
@@ -78,6 +81,7 @@ fn main() {
 
                 match parser::top_level(CompleteStr(&previous)) {
                     Ok((CompleteStr(rest), stmts)) => {
+                        println!("parsed: {:?}", stmts);
                         run_all(stmts);
                         previous = rest.trim().to_string();
                     }
