@@ -6,5 +6,5 @@ edition = "2018"
 
 [dependencies]
 nom = "4.1.1"
-im-rc = "12.3.0"
-rustyline = "3.0.0"
+im-rc = "15.0.0"
+rustyline = "7.1.0"
